@@ -159,6 +159,8 @@ class RunnerChecks(unittest.TestCase):
             validate_assertions([{"kind": "url", "value": ""}])
         with self.assertRaisesRegex(ValueError, "frame"):
             validate_assertions([{"kind": "text", "value": "Done", "frame": True}])
+        with self.assertRaisesRegex(ValueError, "visible"):
+            validate_assertions([{"kind": "role", "role": "heading", "value": "Done", "visible": "yes"}])
 
     def test_rejects_unknown_actions(self):
         with self.assertRaisesRegex(ValueError, "allowed action"):
