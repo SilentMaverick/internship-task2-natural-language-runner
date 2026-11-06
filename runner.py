@@ -280,6 +280,11 @@ def main():
     parser.add_argument("--negative-settle-ms", type=int, default=800,
                         help="Observe this long before passing a negative text check (0â€“10000 ms)")
     args = parser.parse_args()
+    try:
+        from dotenv import load_dotenv
+        load_dotenv()
+    except ImportError as exc:
+        parser.error(f"Missing dependency ({exc.name}); install requirements.txt first")
     if not os.getenv("OPENAI_API_KEY"):
         parser.error("Set OPENAI_API_KEY before running")
     if not os.getenv("OPENAI_MODEL", "").strip():
