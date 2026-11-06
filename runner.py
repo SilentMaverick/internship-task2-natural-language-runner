@@ -88,8 +88,11 @@ def validate_assertions(assertions):
             role = item.get("role")
             if not isinstance(role, str) or not role.strip():
                 raise ValueError("Role assertions require an accessible role")
+            visible = item.get("visible", True)
+            if not isinstance(visible, bool):
+                raise ValueError("Role assertion visible must be true or false")
             row["role"] = role.strip()
-            row["visible"] = item.get("visible", True) is True
+            row["visible"] = visible
         else:
             negate = item.get("negate", False)
             if not isinstance(negate, bool):
@@ -274,6 +277,8 @@ def main():
     parser.add_argument("--case", required=True, help="Plain-English test case")
     parser.add_argument("--headless", action="store_true", help="Run Chromium without a visible window")
     parser.add_argument("--max-actions", type=int, default=10, help="Maximum browser actions (1â€“20)")
+    parser.add_argument("--negative-settle-ms", type=int, default=800,
+                        help="Observe this long before passing a negative text check (0â€“10000 ms)")
     args = parser.parse_args()
     if not os.getenv("OPENAI_API_KEY"):
         parser.error("Set OPENAI_API_KEY before running")
@@ -281,6 +286,8 @@ def main():
         parser.error("Set OPENAI_MODEL to a model supported by your configured API endpoint")
     if not 1 <= args.max_actions <= 20:
         parser.error("--max-actions must be between 1 and 20")
+    if not 0 <= args.negative_settle_ms <= 10000:
+        parser.error("--negative-settle-ms must be between 0 and 10000")
     try:
         from openai import OpenAI
         from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
@@ -343,7 +350,7 @@ def main():
                         reason = "A browser action failed"
                         action_failed = True
                         break
-                checked = evaluate_assertions(page, assertions) if assertions else []
+                checked = evaluate_assertions(page, assertions, args.negative_settle_ms) if assertions else []
                 if checked and not all(row["observed"] for row in checked):
                     reason = "One or more acceptance conditions were not observed in the browser"
                 result = build_result(checked, trace, reason, time.monotonic() - started,
