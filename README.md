@@ -18,8 +18,8 @@ source .venv/bin/activate
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 python -m playwright install chromium
-export OPENAI_API_KEY='your-key'
-export OPENAI_MODEL='your-compatible-model-name'
+cp .env.example .env
+# Edit .env and set OPENAI_API_KEY and OPENAI_MODEL.
 ```
 
 If Chromium reports missing Linux system libraries on Debian or Ubuntu, install them with:
@@ -38,8 +38,8 @@ py -m venv .venv
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 python -m playwright install chromium
-$env:OPENAI_API_KEY = "your-key"
-$env:OPENAI_MODEL = "your-compatible-model-name"
+Copy-Item .env.example .env
+# Edit .env and set OPENAI_API_KEY and OPENAI_MODEL.
 ```
 
 ## Run
