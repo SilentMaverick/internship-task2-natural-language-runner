@@ -48,7 +48,7 @@ $env:OPENAI_MODEL = "your-compatible-model-name"
 python runner.py --url https://phptravels.com/demo --case "Open the page and verify the demo access form is shown"
 ```
 
-The runner prints JSON with `PASS` or `FAIL`, the acceptance checks and their observed results, a redacted action trace, and elapsed time. It exits `0` for PASS and `1` for FAIL. Use `--headless` for headless Chromium; `--max-actions` sets the action limit (1â€“20).
+The runner prints JSON with `PASS` or `FAIL`, the acceptance checks and their observed results, a redacted action trace, and elapsed time. It exits `0` for PASS and `1` for FAIL. Use `--headless` for headless Chromium; `--max-actions` sets the action limit (1â€“20); `--negative-settle-ms` sets the wait for delayed text in a negative assertion (default 800 ms).
 
 Another site and case:
 
@@ -75,5 +75,5 @@ The runner has a bounded action count and timeouts. It uses JSON mode when the m
 
 The plain-English case and visible page text are sent to the configured model API. Input values are omitted from snapshots. For login tests, store values in environment variables and refer to them in the case as `${TEST_EMAIL}` and `${TEST_PASSWORD}`; the runner resolves those placeholders locally and redacts filled values in its trace. Do not put real passwords directly in the case.
 
-This is an LLM-assisted test planner, not a formal natural-language verifier. It can misunderstand vague requirements or propose a weak acceptance condition, so inspect the emitted checks and trace. CAPTCHA, MFA, complex canvas controls, custom inaccessible widgets, and dynamic pages may need manual setup or a site-specific adapter. The included PHPTRAVELS case checks the public demo request page only; it does not request access or enter personal information.
+This is an LLM-assisted test planner, not a formal natural-language verifier. It can misunderstand vague requirements or propose a weak acceptance condition, so inspect the emitted checks and trace. A negative text assertion waits for the configured settle interval; a very late page update can still arrive afterward. CAPTCHA, MFA, complex canvas controls, custom inaccessible widgets, and dynamic pages may need manual setup or a site-specific adapter. The included PHPTRAVELS case checks the public demo request page only; it does not request access or enter personal information.
 
