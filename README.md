@@ -1,43 +1,79 @@
 # Task 2 â€” plain-English browser runner
 
-A small Python CLI that asks an OpenAI-compatible chat model to turn a test case into one browser action at a time, executes those actions with Playwright, and returns PASS only when the model observes evidence for the requested condition. URL and case are command-line inputs; the site is not embedded in the implementation.
+A Python CLI that turns a plain-English case into bounded Playwright actions on the supplied URL. The model proposes both the actions and explicit acceptance conditions. Playwright checks those conditions against the browser; the model cannot declare a test passed by itself.
 
 ## Requirements
 
-- Python 3.10+
-- An OpenAI-compatible chat completion API key and model
+- Python 3.10 or later
+- An OpenAI-compatible chat-completion API key and model name
 - Chromium installed by Playwright
 
-## Setup (PowerShell)
+## Linux setup
+
+From this directory:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+python -m playwright install chromium
+export OPENAI_API_KEY='your-key'
+export OPENAI_MODEL='your-compatible-model-name'
+```
+
+If Chromium reports missing Linux system libraries on Debian or Ubuntu, install them with:
+
+```bash
+python -m playwright install-deps chromium
+```
+
+For a compatible endpoint other than the default, also set `OPENAI_BASE_URL`, for example `export OPENAI_BASE_URL='http://localhost:11434/v1'`. Keep API keys in environment variables; do not commit them.
+
+## Windows setup (PowerShell)
 
 ```powershell
 py -m venv .venv
 .\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
 python -m playwright install chromium
 $env:OPENAI_API_KEY = "your-key"
 $env:OPENAI_MODEL = "your-compatible-model-name"
 ```
 
-For another OpenAI-compatible provider set `OPENAI_BASE_URL` as well. Keep keys in environment variables; never commit them.
-
 ## Run
 
-```powershell
+```bash
 python runner.py --url https://phptravels.com/demo --case "Open the page and verify the demo access form is shown"
 ```
 
-The runner prints a JSON result with status, explanation, and action trace; PASS exits 0 and FAIL exits 1. It refuses ambiguous duplicate controls and only accepts PASS after a visible-text assertion succeeds. Other example:
+The runner prints JSON with `PASS` or `FAIL`, the acceptance checks and their observed results, a redacted action trace, and elapsed time. It exits `0` for PASS and `1` for FAIL. Use `--headless` for headless Chromium; `--max-actions` sets the action limit (1â€“20).
 
-```powershell
+Another site and case:
+
+```bash
 python runner.py --url https://example.org --case "Open the page and verify the main heading contains Example Domain"
 ```
 
-The model receives the current page title, URL and visible interactive elements. It can choose from a small set of actions (`click`, `fill`, `select`, `check`, `assert_text`, `finish`) using accessible names/labels. It cannot execute arbitrary JavaScript or issue network requests. It stops after a bounded number of actions and reports errors as FAIL. To recheck the decision safeguards, run `python -m unittest`.
+Recheck the local decision and privacy safeguards without an API key or browser installation:
 
-The test case and visible page text are sent to the configured model API. URL userinfo, query values, and fragments are removed from the URL shown to the model. Use fictional test data. For login checks, put credentials in environment variables and refer to them as `${TEST_EMAIL}` or `${TEST_PASSWORD}` in the case; the runner resolves fill values locally and redacts them from the action trace. Never put real passwords directly in the case text.
+```bash
+python -m unittest -v
+```
 
-## Approach and limitations
+## How it works
 
-The model interprets new language cases and plans against the live page, while Playwright executes and validates each step. Pass/fail is evidence based: a case must include an observable condition. This remains probabilistic; ambiguous wording, CAPTCHA/MFA, login credentials, complex canvas widgets and rapidly changing pages can defeat the planner. A model may also choose a poor locator or misread evidence. Review the trace and use a controlled test account for authenticated workflows. The included PHPTRAVELS example checks the public demo request page and does not request access or enter personal data.
+1. Playwright opens the requested URL and collects a compact snapshot of visible text, accessible controls, and same-page frames.
+2. The model receives the case and snapshot, then proposes one action and the acceptance conditions on its first response. Later responses can adapt actions to the updated page.
+3. The runner executes only the allowed actions (`click`, `fill`, `select`, `check`, `wait_text`, `done`). It rejects duplicate visible matches instead of choosing the first control.
+4. The test passes only after the planner finishes and every generated acceptance condition is observed in Playwright. Supported checks include visible text, URL, page title, and accessible role/name.
+
+The runner has a bounded action count and timeouts. It uses JSON mode when the model endpoint supports it and retries without that option when an OpenAI-compatible endpoint explicitly rejects it; local schema validation still applies. It does not run arbitrary JavaScript or submit file uploads. Page content is treated as untrusted data, not as instructions.
+
+## Privacy and limits
+
+The plain-English case and visible page text are sent to the configured model API. Input values are omitted from snapshots. For login tests, store values in environment variables and refer to them in the case as `${TEST_EMAIL}` and `${TEST_PASSWORD}`; the runner resolves those placeholders locally and redacts filled values in its trace. Do not put real passwords directly in the case.
+
+This is an LLM-assisted test planner, not a formal natural-language verifier. It can misunderstand vague requirements or propose a weak acceptance condition, so inspect the emitted checks and trace. CAPTCHA, MFA, complex canvas controls, custom inaccessible widgets, and dynamic pages may need manual setup or a site-specific adapter. The included PHPTRAVELS case checks the public demo request page only; it does not request access or enter personal information.
 
