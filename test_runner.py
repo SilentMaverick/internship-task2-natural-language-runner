@@ -119,8 +119,10 @@ class RunnerChecks(unittest.TestCase):
         fake_playwright_sync.sync_playwright = lambda: FakePlaywrightManager(page)
         fake_playwright = types.ModuleType("playwright")
         fake_playwright.sync_api = fake_playwright_sync
+        fake_dotenv = types.ModuleType("dotenv")
+        fake_dotenv.load_dotenv = lambda: None
         output = io.StringIO()
-        with patch.dict(sys.modules, {"openai": fake_openai, "playwright": fake_playwright,
+        with patch.dict(sys.modules, {"openai": fake_openai, "dotenv": fake_dotenv, "playwright": fake_playwright,
                                      "playwright.sync_api": fake_playwright_sync}), \
              patch.dict("os.environ", {"OPENAI_API_KEY": "test", "OPENAI_MODEL": "test-model"}), \
              patch.object(sys, "argv", ["runner.py", "--url", "https://example.org", "--case", "Show dashboard"]), \
