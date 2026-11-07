@@ -10,6 +10,7 @@ from runner import (
     build_result,
     explicit_fill_instruction,
     explicit_fill_instructions,
+    evaluate_assertions,
     main,
     parse_response,
     request_completion,
@@ -47,6 +48,9 @@ class FakeLocator:
     def count(self):
         return int(self.visible)
 
+    def input_value(self, **kwargs):
+        return getattr(self, "value", "")
+
 
 class FakePage:
     url = "https://example.org/"
@@ -66,6 +70,19 @@ class FakePage:
 
     def title(self):
         return "Example"
+
+
+class FakeFieldPage(FakePage):
+    def get_by_label(self, label, **kwargs):
+        locator = FakeLocator(label == "First name")
+        locator.value = "Demo"
+        return locator
+
+    def get_by_placeholder(self, label, **kwargs):
+        return FakeLocator(False)
+
+    def get_by_role(self, role, **kwargs):
+        return FakeLocator(False)
 
 
 class FakeContext:
@@ -193,6 +210,17 @@ class RunnerChecks(unittest.TestCase):
             validate_assertions([{"kind": "text", "value": "Done", "frame": True}])
         with self.assertRaisesRegex(ValueError, "visible"):
             validate_assertions([{"kind": "role", "role": "heading", "value": "Done", "visible": "yes"}])
+
+    def test_field_value_assertion_checks_actual_value(self):
+        page = FakeFieldPage("")
+        result = evaluate_assertions(page, [{
+            "kind": "field_value", "target": "First name", "value": "Demo", "frame": 0,
+        }])
+        self.assertTrue(result[0]["observed"])
+
+    def test_field_value_assertion_requires_target(self):
+        with self.assertRaisesRegex(ValueError, "target label"):
+            validate_assertions([{"kind": "field_value", "value": "Demo"}])
 
     def test_rejects_unknown_actions(self):
         with self.assertRaisesRegex(ValueError, "allowed action"):
