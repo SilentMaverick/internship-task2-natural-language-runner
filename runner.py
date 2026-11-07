@@ -8,13 +8,14 @@ import time
 from urllib.parse import urlsplit, urlunsplit
 
 ACTIONS = {"click", "fill", "select", "check", "wait_text", "done"}
-ASSERTION_KINDS = {"text", "url", "title", "role"}
+ASSERTION_KINDS = {"text", "url", "title", "role", "field_value"}
 SYSTEM = """You plan one browser test action at a time. Return one JSON object only, no markdown.
 On your FIRST response, include an `assertions` array with every observable success condition required by the user's test. Each item must use one of these forms:
 {"kind":"text","value":"visible expected text","frame":0,"negate":false}
 {"kind":"url","value":"/expected/path","negate":false}
 {"kind":"title","value":"expected title","negate":false}
 {"kind":"role","role":"heading","value":"Dashboard","frame":0,"visible":true}
+{"kind":"field_value","target":"Email","value":"person@example.com","frame":0}
 Do not invent success conditions; make them specific and directly tied to the request. Return an empty array if the request has no observable acceptance condition.
 For every response, choose one next action:
 {"action":"click","target":"accessible name","role":"button","frame":0}
@@ -74,13 +75,21 @@ def validate_assertions(assertions):
     clean = []
     for item in assertions:
         if not isinstance(item, dict) or item.get("kind") not in ASSERTION_KINDS:
-            raise ValueError("Each assertion must have kind text, url, title, or role")
+            raise ValueError("Each assertion must have kind text, url, title, role, or field_value")
         value = item.get("value")
         if not isinstance(value, str) or not value.strip():
             raise ValueError("Each assertion must include a non-empty value")
         row = {"kind": item["kind"], "value": value.strip()}
         frame = item.get("frame", 0)
         if row["kind"] in {"text", "role"}:
+            if not isinstance(frame, int) or isinstance(frame, bool) or frame < 0:
+                raise ValueError("Assertion frame must be a non-negative integer")
+            row["frame"] = frame
+        if row["kind"] == "field_value":
+            target = item.get("target")
+            if not isinstance(target, str) or not target.strip():
+                raise ValueError("Field value assertions require a target label")
+            row["target"] = target.strip()
             if not isinstance(frame, int) or isinstance(frame, bool) or frame < 0:
                 raise ValueError("Assertion frame must be a non-negative integer")
             row["frame"] = frame
@@ -203,6 +212,16 @@ def get_frame(page, index):
     return page.frames[index]
 
 
+def locate_field(frame, target):
+    """Find a visible field through its label, placeholder, or accessible textbox name."""
+    locator = frame.get_by_label(target, exact=False).filter(visible=True)
+    if locator.count() == 0:
+        locator = frame.get_by_placeholder(target, exact=False).filter(visible=True)
+    if locator.count() == 0:
+        locator = frame.get_by_role("textbox", name=target, exact=False).filter(visible=True)
+    return locator
+
+
 def page_snapshot(page):
     frames = []
     for index, frame in enumerate(page.frames):
@@ -249,11 +268,7 @@ def execute(page, step):
         if not isinstance(template, str):
             raise ValueError("Fill value must be text")
         value, safe_value = substitute_environment(template)
-        loc = frame.get_by_label(target, exact=False).filter(visible=True)
-        if loc.count() == 0:
-            loc = frame.get_by_placeholder(target, exact=False).filter(visible=True)
-        if loc.count() == 0:
-            loc = frame.get_by_role("textbox", name=target, exact=False).filter(visible=True)
+        loc = locate_field(frame, target)
         unique(loc, f"field '{target}'").fill(value, timeout=5000)
         if loc.input_value(timeout=5000) != value:
             raise ValueError(f"Field '{target}' did not retain the requested value")
@@ -302,6 +317,11 @@ def evaluate_assertions(page, assertions, negative_settle_ms=800):
                 observed = loc.count() > 0
                 if not assertion["visible"]:
                     observed = not observed
+            elif kind == "field_value":
+                frame = get_frame(page, assertion["frame"])
+                loc = unique(locate_field(frame, assertion["target"]), f"field '{assertion['target']}'")
+                expected, _ = substitute_environment(value)
+                observed = loc.input_value(timeout=3000) == expected
         except Exception:
             observed = False
         result = {**assertion, "observed": observed}
@@ -397,6 +417,10 @@ def main():
                     step = parse_response(response.choices[0].message.content or "{}", first_response=(turn == 0))
                     if turn == 0:
                         assertions = step["assertions"]
+                        assertions.extend({"kind": "field_value", "target": fill["target"],
+                                           "value": fill["value"], "frame": 0}
+                                          for fill in direct_fills)
+                        assertions = validate_assertions(assertions)
                         if not assertions:
                             reason = "The test case did not produce a measurable acceptance condition"
                             break
