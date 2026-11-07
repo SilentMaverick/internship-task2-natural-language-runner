@@ -116,25 +116,44 @@ def required_interactions(test_case):
     return required
 
 
+def explicit_fill_instructions(test_case):
+    """Extract direct fill instructions, including lists joined with 'and'."""
+    action = re.search(r"\b(?:fill(?:\s+in)?|type|enter)\s+(?:in\s+)?", test_case, re.IGNORECASE)
+    if not action:
+        return []
+    if re.search(r"(?:do not|don't|never)\s+$", test_case[max(0, action.start() - 16):action.start()].casefold()):
+        return []
+
+    markers = list(re.finditer(r"\bwith\b", test_case[action.end():], re.IGNORECASE))
+    instructions = []
+    prior_end = action.end()
+    for index, marker in enumerate(markers):
+        marker_start = action.end() + marker.start()
+        marker_end = action.end() + marker.end()
+        prefix = test_case[prior_end:marker_start].strip()
+        if index:
+            parts = re.split(r"\s+and\s+|,\s*", prefix, flags=re.IGNORECASE)
+            target = parts[-1].strip()
+        else:
+            target = re.sub(r"^(?:the\s+)?", "", prefix, flags=re.IGNORECASE).strip()
+        target = re.sub(r"\s+(?:textbox|text\s+box|text\s+field|field|input)$", "", target, flags=re.IGNORECASE)
+        next_start = action.end() + markers[index + 1].start() if index + 1 < len(markers) else len(test_case)
+        raw_value = test_case[marker_end:next_start].strip()
+        if index + 1:
+            raw_value = re.split(r"\s+and\s+|,\s*", raw_value, flags=re.IGNORECASE)[0].strip()
+        else:
+            raw_value = re.split(r"(?:,\s*)?\bthen\b|[.;]", raw_value, maxsplit=1, flags=re.IGNORECASE)[0].strip()
+        value = raw_value.strip(" \t\r\n\"'â€œâ€")
+        if target and value:
+            instructions.append({"target": target.strip(" \t\r\n\"'â€œâ€"), "value": value})
+        prior_end = marker_end
+    return instructions
+
+
 def explicit_fill_instruction(test_case):
-    """Extract a direct fill instruction such as 'Fill the Email field with test@example.com'."""
-    pattern = re.compile(
-        r"\b(?:fill(?:\s+in)?|type|enter)\s+(?:the\s+)?(?P<target>.+?)\s+"
-        r"(?:textbox|text\s+box|text\s+field|field|input)\s+with\s+"
-        r"(?P<value>.+?)(?=,\s*(?:then|and)\b|\s+then\b|\s+and\b|[.;]|$)",
-        re.IGNORECASE,
-    )
-    match = pattern.search(test_case)
-    if not match:
-        return None
-    target = match.group("target").strip(" \t\r\n\"'â€œâ€")
-    value = match.group("value").strip(" \t\r\n\"'â€œâ€")
-    if not target or not value:
-        return None
-    prefix = test_case[max(0, match.start() - 16):match.start()].casefold()
-    if re.search(r"(?:do not|don't|never)\s+$", prefix):
-        return None
-    return {"target": target, "value": value}
+    """Compatibility helper returning the first parsed fill instruction."""
+    instructions = explicit_fill_instructions(test_case)
+    return instructions[0] if instructions else None
 
 
 def parse_response(raw, first_response=False):
@@ -353,16 +372,17 @@ def main():
                 context = browser.new_context()
                 page = context.new_page()
                 page.goto(args.url, wait_until="domcontentloaded", timeout=45000)
-                direct_fill = explicit_fill_instruction(args.case)
-                if direct_fill:
+                direct_fills = explicit_fill_instructions(args.case)
+                for direct_fill in direct_fills:
                     print(f"[runner] Filling requested field '{direct_fill['target']}'...", file=sys.stderr, flush=True)
                     try:
                         trace.append(execute(page, {"action": "fill", **direct_fill}))
                     except Exception as exc:
                         trace.append({"action": "fill", "target": direct_fill["target"],
                                       "error": f"{type(exc).__name__}: {exc}"[:400]})
-                        reason = "The requested field could not be filled"
+                        reason = "A requested field could not be filled"
                         action_failed = True
+                        break
                 for turn in range(args.max_actions if not action_failed else 0):
                     print(f"[runner] Waiting for model plan {turn + 1}/{args.max_actions}...", file=sys.stderr, flush=True)
                     prompt = {
