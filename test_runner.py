@@ -11,6 +11,7 @@ from runner import (
     main,
     parse_response,
     request_completion,
+    required_interactions,
     safe_page_url,
     substitute_environment,
     unique,
@@ -101,6 +102,14 @@ class FakePlaywrightManager:
 
 
 class RunnerChecks(unittest.TestCase):
+    def test_explicit_fill_must_be_performed(self):
+        self.assertEqual(required_interactions(
+            "Fill the First name textbox with Demo Tester, then verify the button is visible. Do not submit."
+        ), {"fill"})
+
+    def test_read_only_case_has_no_required_interactions(self):
+        self.assertEqual(required_interactions("Open the page and verify the heading is visible"), set())
+
     def test_cli_pass_requires_and_observes_assertion(self):
         page = FakePage("Dashboard")
         answer = json.dumps({
