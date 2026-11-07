@@ -56,6 +56,14 @@ Another site and case:
 python runner.py --url https://example.org --case "Open the page and verify the main heading contains Example Domain"
 ```
 
+Fill multiple labeled form fields without submitting the form:
+
+```bash
+python runner.py --url https://phptravels.com/demo --case "Fill the First name textbox with Demo and Last name with Tester and Business name with xyz and whatsapp number with 0000000000"
+```
+
+Explicit fill requests are performed before the model plans further steps. The runner verifies each field retained its requested value; it does not submit the form unless the case explicitly asks it to.
+
 Recheck the local decision and privacy safeguards without an API key or browser installation:
 
 ```bash
