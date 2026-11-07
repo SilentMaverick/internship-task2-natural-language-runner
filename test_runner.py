@@ -9,6 +9,7 @@ from unittest.mock import patch
 from runner import (
     build_result,
     explicit_fill_instruction,
+    explicit_fill_instructions,
     main,
     parse_response,
     request_completion,
@@ -107,6 +108,17 @@ class RunnerChecks(unittest.TestCase):
         self.assertEqual(explicit_fill_instruction(
             "Fill the First name textbox with Demo Tester, then verify the button is visible."
         ), {"target": "First name", "value": "Demo Tester"})
+
+    def test_extracts_multiple_requested_fields(self):
+        self.assertEqual(explicit_fill_instructions(
+            "Fill the First name textbox with Demo and Last name with Tester and "
+            "Business name with xyz and whatsapp number with 0000000000"
+        ), [
+            {"target": "First name", "value": "Demo"},
+            {"target": "Last name", "value": "Tester"},
+            {"target": "Business name", "value": "xyz"},
+            {"target": "whatsapp number", "value": "0000000000"},
+        ])
 
     def test_does_not_execute_negated_fill_instruction(self):
         self.assertIsNone(explicit_fill_instruction("Do not fill the First name field with Demo Tester."))
