@@ -116,6 +116,27 @@ def required_interactions(test_case):
     return required
 
 
+def explicit_fill_instruction(test_case):
+    """Extract a direct fill instruction such as 'Fill the Email field with test@example.com'."""
+    pattern = re.compile(
+        r"\b(?:fill(?:\s+in)?|type|enter)\s+(?:the\s+)?(?P<target>.+?)\s+"
+        r"(?:textbox|text\s+box|text\s+field|field|input)\s+with\s+"
+        r"(?P<value>.+?)(?=,\s*(?:then|and)\b|\s+then\b|\s+and\b|[.;]|$)",
+        re.IGNORECASE,
+    )
+    match = pattern.search(test_case)
+    if not match:
+        return None
+    target = match.group("target").strip(" \t\r\n\"'â€œâ€")
+    value = match.group("value").strip(" \t\r\n\"'â€œâ€")
+    if not target or not value:
+        return None
+    prefix = test_case[max(0, match.start() - 16):match.start()].casefold()
+    if re.search(r"(?:do not|don't|never)\s+$", prefix):
+        return None
+    return {"target": target, "value": value}
+
+
 def parse_response(raw, first_response=False):
     try:
         result = json.loads(raw)
@@ -212,7 +233,11 @@ def execute(page, step):
         loc = frame.get_by_label(target, exact=False).filter(visible=True)
         if loc.count() == 0:
             loc = frame.get_by_placeholder(target, exact=False).filter(visible=True)
+        if loc.count() == 0:
+            loc = frame.get_by_role("textbox", name=target, exact=False).filter(visible=True)
         unique(loc, f"field '{target}'").fill(value, timeout=5000)
+        if loc.input_value(timeout=5000) != value:
+            raise ValueError(f"Field '{target}' did not retain the requested value")
         return {"action": action, "target": target, "value": safe_value, "frame": frame_index}
     elif action == "select":
         option = step.get("value", "")
@@ -328,7 +353,17 @@ def main():
                 context = browser.new_context()
                 page = context.new_page()
                 page.goto(args.url, wait_until="domcontentloaded", timeout=45000)
-                for turn in range(args.max_actions):
+                direct_fill = explicit_fill_instruction(args.case)
+                if direct_fill:
+                    print(f"[runner] Filling requested field '{direct_fill['target']}'...", file=sys.stderr, flush=True)
+                    try:
+                        trace.append(execute(page, {"action": "fill", **direct_fill}))
+                    except Exception as exc:
+                        trace.append({"action": "fill", "target": direct_fill["target"],
+                                      "error": f"{type(exc).__name__}: {exc}"[:400]})
+                        reason = "The requested field could not be filled"
+                        action_failed = True
+                for turn in range(args.max_actions if not action_failed else 0):
                     print(f"[runner] Waiting for model plan {turn + 1}/{args.max_actions}...", file=sys.stderr, flush=True)
                     prompt = {
                         "test_case": args.case,
