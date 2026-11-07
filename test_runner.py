@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 from runner import (
     build_result,
+    explicit_fill_instruction,
     main,
     parse_response,
     request_completion,
@@ -102,6 +103,14 @@ class FakePlaywrightManager:
 
 
 class RunnerChecks(unittest.TestCase):
+    def test_extracts_explicit_fill_instruction(self):
+        self.assertEqual(explicit_fill_instruction(
+            "Fill the First name textbox with Demo Tester, then verify the button is visible."
+        ), {"target": "First name", "value": "Demo Tester"})
+
+    def test_does_not_execute_negated_fill_instruction(self):
+        self.assertIsNone(explicit_fill_instruction("Do not fill the First name field with Demo Tester."))
+
     def test_explicit_fill_must_be_performed(self):
         self.assertEqual(required_interactions(
             "Fill the First name textbox with Demo Tester, then verify the button is visible. Do not submit."
